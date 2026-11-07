@@ -1,0 +1,9 @@
+{
+  "id": "devtools",
+  "name": "DevTools",
+  "version": "1.0.0",
+  "banter": "1",
+  "entry": "main.luau",
+  "permissions": ["log", "storage", "ui", "io", "os"],
+  "memory_mb": 16
+}

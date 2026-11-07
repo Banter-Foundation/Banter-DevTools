@@ -1,0 +1,11 @@
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Local Banter dumps written by this mod when enabled
+diagnostics.txt
+devtools.log
+*.log
