@@ -1,11 +1,14 @@
--- Banter DevTools v1.0.0
+-- Banter DevTools v1.1.0
 -- Client mod. Uses only host APIs that Banter actually injects today.
--- Gaps (host FPS/CPU/mem, protocol, clipboard, screen APIs) are documented in README.md.
+-- UI lives in the floating `devtools` window (F3). No stage.header.actions chrome.
+-- Gaps (host FPS/CPU/mem, protocol, clipboard, screen APIs, second GLFW OS window,
+-- generic keybind API) are documented in README.md.
 
-local MOD_VERSION = "1.0.0"
+local MOD_VERSION = "1.1.0"
 local BANTER_API = "1"
 local LOG_CAP = 80
 local TAIL_BYTES = 6000
+local LOG_LINES_SHOWN = 12
 
 local panels = { "log", "perf", "proto", "overlay", "dump" }
 local panel = "log"
@@ -131,7 +134,7 @@ local function tail_log_file()
 		tailed_line = "(no log file yet)"
 		return
 	end
-	local text = file:read()
+	local text = file:read("*a")
 	file:close()
 	if type(text) ~= "string" or text == "" then
 		tailed_line = "(empty log)"
@@ -163,7 +166,7 @@ local function write_diagnostics()
 		"peak_hz=" .. string.format("%.1f", peak_hz),
 		"data_dir=" .. (data_dir or "(unknown)"),
 		"log_path=" .. (log_path or "(unknown)"),
-		"host_gaps=no FPS/CPU/mem API; no protocol/version API; no clipboard API; banter.screen/events/user not injected for mods",
+		"host_gaps=no FPS/CPU/mem API; no protocol/version API; no clipboard API; banter.screen/events/user not injected for mods; no second GLFW OS window or generic keybind API for mods",
 		"---- recent log ----",
 	}
 	for _, line in ipairs(logs) do
@@ -196,7 +199,7 @@ local function sample_perf()
 		local dt = now - last_clock
 		if dt > 0 then
 			local hz = 1 / dt
-			-- EMA so the header stays readable.
+			-- EMA so the window stays readable.
 			if sample_hz <= 0 then
 				sample_hz = hz
 			else
@@ -213,8 +216,8 @@ end
 local function panel_label()
 	if panel == "log" then
 		local latest = logs[#logs] or tailed_line or "(quiet)"
-		if #latest > 42 then
-			latest = string.sub(latest, 1, 39) .. "..."
+		if #latest > 72 then
+			latest = string.sub(latest, 1, 69) .. "..."
 		end
 		return latest
 	elseif panel == "perf" then
@@ -248,6 +251,36 @@ local function panel_action()
 	end
 end
 
+local function action_label()
+	if panel == "overlay" then
+		return overlay_on and "Off" or "On"
+	elseif panel == "dump" then
+		return "Dump"
+	elseif panel == "log" then
+		return "Tail"
+	elseif panel == "perf" then
+		return "Reset"
+	elseif panel == "proto" then
+		return "Note"
+	end
+	return "Do"
+end
+
+local function draw_log_lines()
+	local start = math.max(1, #logs - LOG_LINES_SHOWN + 1)
+	if #logs == 0 then
+		banter.ui.text(tailed_line ~= "" and tailed_line or "(quiet)", "muted")
+		return
+	end
+	for i = start, #logs do
+		local line = logs[i]
+		if #line > 78 then
+			line = string.sub(line, 1, 75) .. "..."
+		end
+		banter.ui.text(line, "muted")
+	end
+end
+
 -- Boot
 load_prefs()
 data_dir = resolve_data_dir()
@@ -264,6 +297,7 @@ if data_dir then
 else
 	push_log("warn", "could not resolve Banter data dir")
 end
+push_log("info", "press F3 to toggle the DevTools window")
 
 banter.render(function()
 	frame_n = frame_n + 1
@@ -280,28 +314,29 @@ banter.render(function()
 		end
 	end
 
-	-- Host currently paints only stage.header.actions for mods.
-	if banter.ui.begin("stage.header.actions") then
-		banter.ui.text("DT:" .. panel, "muted")
+	-- Floating DevTools window (host paints this slot; F3 toggles). No header chrome.
+	if banter.ui.begin("devtools") then
+		banter.ui.text("panel: " .. panel, "heading")
 		if banter.ui.button("Panel") then
 			cycle_panel()
 		end
 		banter.ui.text(panel_label(), "body")
-		local action_label = "Do"
-		if panel == "overlay" then
-			action_label = overlay_on and "Off" or "On"
-		elseif panel == "dump" then
-			action_label = "Copy"
-		elseif panel == "log" then
-			action_label = "Tail"
-		elseif panel == "perf" then
-			action_label = "Reset"
-		elseif panel == "proto" then
-			action_label = "Note"
-		end
-		if banter.ui.button(action_label) then
+		if banter.ui.button(action_label()) then
 			panel_action()
 		end
+		if panel == "log" then
+			banter.ui.text("recent", "muted")
+			draw_log_lines()
+		elseif panel == "perf" then
+			banter.ui.text("render-callback Hz from os.clock (not UI FPS)", "muted")
+		elseif panel == "proto" then
+			banter.ui.text("host release / PROTOCOL not exposed to mods", "muted")
+		elseif panel == "overlay" then
+			banter.ui.text("tints Banter shell via banter.theme.shell", "muted")
+		elseif panel == "dump" then
+			banter.ui.text(dump_path or "(no dump path)", "muted")
+		end
+		banter.ui.text(status, "muted")
 		banter.ui.close()
 	end
 end)
